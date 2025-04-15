@@ -14,7 +14,7 @@ interface IERC7857 {
     );
 
     /// @dev This emits when a user is authorized to use the data
-    event AuthorizedUsage(uint256 indexed _tokenId, address indexed _user);
+    event Authorization(address indexed _from, address indexed _to, uint256 indexed _tokenId);
 
     /// @dev This emits when data is transferred with ownership
     event Transferred(
@@ -72,21 +72,8 @@ interface IERC7857 {
         address _to,
         uint256 _tokenId,
         bytes[] calldata _proofs
-    ) external payable returns (uint256 _newTokenId);
+    ) external returns (uint256 _newTokenId);
 
-    /// @notice Transfer public data with ownership
-    /// @param _to Address to transfer data to
-    /// @param _tokenId The token to transfer data for
-    function transferPublic(address _to, uint256 _tokenId) external;
-
-    /// @notice Clone public data
-    /// @param _to Address to clone data to
-    /// @param _tokenId The token to clone data for
-    /// @return _newTokenId The ID of the newly cloned token
-    function clonePublic(
-        address _to,
-        uint256 _tokenId
-    ) external payable returns (uint256 _newTokenId);
 
     /// @notice Add authorized user to group
     /// @param _tokenId The token to add to group

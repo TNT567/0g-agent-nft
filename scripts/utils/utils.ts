@@ -45,7 +45,7 @@ class ContractMeta<T> {
 
 export const CONTRACTS = {
     AgentNFT: new ContractMeta(Factories.AgentNFT__factory),
-    TEEVerifier: new ContractMeta(Factories.TEEVerifier__factory),
+    Verifier: new ContractMeta(Factories.Verifier__factory),
 } as const;
 
 export async function deployDirectly(

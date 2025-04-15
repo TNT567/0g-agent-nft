@@ -5,6 +5,7 @@ import "hardhat-deploy";
 import "hardhat-deploy-ethers";
 dotenv.config();
 
+const ZG_RPC_URL = process.env.ZG_RPC_URL;
 const ZG_TESTNET_PRIVATE_KEY = process.env.ZG_TESTNET_PRIVATE_KEY;
 const ZG_AGENT_NFT_CREATOR_PRIVATE_KEY = process.env.ZG_AGENT_NFT_CREATOR_PRIVATE_KEY;
 const ZG_AGENT_NFT_ALICE_PRIVATE_KEY = process.env.ZG_AGENT_NFT_ALICE_PRIVATE_KEY;
@@ -51,9 +52,9 @@ const config: HardhatUserConfig = {
       tags: ["test", "local"]
     },
     zgTestnet: {
-      url: "https://evmrpc-testnet.0g.ai",
+      url: ZG_RPC_URL || "",
       accounts: [ZG_TESTNET_PRIVATE_KEY || ""],
-      chainId: 16600,
+      chainId: 80087,
       live: true,
       saveDeployments: true,
       tags: ["staging"]

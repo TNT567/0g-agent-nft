@@ -5,10 +5,10 @@ import { CONTRACTS, deployInBeaconProxy, deployDirectly, getTypedContract } from
 const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     // 1. Deploy TEEVerifier
     console.log("Deploying TEE Verifier...");
-    await deployDirectly(hre, CONTRACTS.TEEVerifier, ["0x0000000000000000000000000000000000000000"]);
-    const verifier_ = await getTypedContract(hre, CONTRACTS.TEEVerifier);
+    await deployDirectly(hre, CONTRACTS.Verifier, ["0x0000000000000000000000000000000000000000", 0]);
+    const verifier_ = await getTypedContract(hre, CONTRACTS.Verifier);
     const verifierAddress = await verifier_.getAddress();
-    console.log("TEEVerifier deployed to:", verifierAddress);
+    console.log("Verifier deployed to:", verifierAddress);
 
     // 1. Deploy ZKPVerifier (alternative)
 
