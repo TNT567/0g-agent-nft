@@ -14,9 +14,9 @@ library Utils {
         return string(str);
     }
 
-    function isEqual(
-        bytes32[] memory arr1,
-        bytes32[] memory arr2
+    function bytesEqual(
+        bytes memory arr1,
+        bytes memory arr2
     ) internal pure returns (bool) {
         if (arr1.length != arr2.length) {
             return false;

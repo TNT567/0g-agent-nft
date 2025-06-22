@@ -1,6 +1,8 @@
 import { DeployFunction } from "hardhat-deploy/types";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { CONTRACTS, deployInBeaconProxy } from "../utils/utils";
+import { AttestationConfigStruct } from "../../typechain-types/contracts/verifiers/Verifier";
+
 
 const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     const { getNamedAccounts } = hre;
@@ -18,11 +20,14 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     
     const attestationContract = process.env.ATTESTATION_CONTRACT || "0x0000000000000000000000000000000000000000";
     const verifierType = process.env.VERIFIER_TYPE || "0";
-    
+
     const VerifierFactory = await hre.ethers.getContractFactory("Verifier");
+    const attestationConfig: AttestationConfigStruct = {
+        oracleType: parseInt(verifierType),
+        contractAddress: attestationContract
+    }
     const verifierInitData = VerifierFactory.interface.encodeFunctionData("initialize", [
-        attestationContract,
-        parseInt(verifierType),
+        [attestationConfig],
         deployer
     ]);
 

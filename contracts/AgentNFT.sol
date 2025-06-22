@@ -2,49 +2,91 @@
 pragma solidity ^0.8.20;
 
 import {AccessControlEnumerableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/extensions/AccessControlEnumerableUpgradeable.sol";
-import {IERC7857} from "./interfaces/IERC7857.sol";
-import {IERC7857Metadata} from "./interfaces/IERC7857Metadata.sol";
-import {IERC7857DataVerifier, PreimageProofOutput, TransferValidityProofOutput} from "./interfaces/IERC7857DataVerifier.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
+import "./interfaces/IERC7857.sol";
+import "./interfaces/IERC7857Metadata.sol";
+import "./interfaces/IERC7857DataVerifier.sol";
+import "./Utils.sol";
 
 contract AgentNFT is
     AccessControlEnumerableUpgradeable,
     IERC7857,
     IERC7857Metadata
 {
+    event Updated(
+        uint256 indexed _tokenId,
+        IntelligentData[] _oldDatas,
+        IntelligentData[] _newDatas
+    );
+
     event Approval(
         address indexed _from,
         address indexed _to,
         uint256 indexed _tokenId
     );
+
     event ApprovalForAll(
         address indexed _owner,
         address indexed _operator,
         bool _approved
     );
 
+    event Minted(
+        uint256 indexed _tokenId,
+        address indexed _creator,
+        address indexed _owner
+    );
+
+    event Authorization(
+        address indexed _from,
+        address indexed _to,
+        uint256 indexed _tokenId
+    );
+
+    event Transferred(
+        uint256 _tokenId,
+        address indexed _from,
+        address indexed _to
+    );
+
+    event Cloned(
+        uint256 indexed _tokenId,
+        uint256 indexed _newTokenId,
+        address _from,
+        address _to
+    );
+
+    event PublishedSealedKey(
+        address indexed _to,
+        uint256 indexed _tokenId,
+        bytes[] _sealedKeys
+    );
+
+    event DelegateAccess(
+        address indexed _user,
+        address indexed _assistant
+    );
+
+    struct TokenData {
+        address owner;
+        address[] authorizedUsers;
+        address approvedUser;
+        IntelligentData[] iDatas;
+    }
+
     /// @custom:storage-location erc7201:agent.storage.AgentNFT
     struct AgentNFTStorage {
         // Token data
         mapping(uint256 => TokenData) tokens;
         mapping(address owner => mapping(address operator => bool)) operatorApprovals;
-        mapping(address user => address realAccessor) delegateAccess;
+        mapping(address user => address accessAssistant) accessAssistants;
         uint256 nextTokenId;
         // Contract metadata
         string name;
         string symbol;
-        string chainURL;
-        string indexerURL;
+        string storageInfo;
         // Core components
         IERC7857DataVerifier verifier;
-    }
-
-    struct TokenData {
-        address owner;
-        string[] dataDescriptions;
-        bytes32[] dataHashes;
-        address[] authorizedUsers;
-        address approvedUser;
     }
 
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
@@ -74,9 +116,8 @@ contract AgentNFT is
     function initialize(
         string memory name_,
         string memory symbol_,
+        string memory storageInfo_,
         address verifierAddr,
-        string memory chainURL_,
-        string memory indexerURL_,
         address admin_
     ) public virtual initializer {
         require(verifierAddr != address(0), "Zero address");
@@ -90,8 +131,7 @@ contract AgentNFT is
         AgentNFTStorage storage $ = _getAgentStorage();
         $.name = name_;
         $.symbol = symbol_;
-        $.chainURL = chainURL_;
-        $.indexerURL = indexerURL_;
+        $.storageInfo = storageInfo_;
         $.verifier = IERC7857DataVerifier(verifierAddr);
     }
 
@@ -116,393 +156,344 @@ contract AgentNFT is
         _getAgentStorage().verifier = IERC7857DataVerifier(newVerifier);
     }
 
-    function updateURLS(
-        string memory newChainURL,
-        string memory newIndexerURL
-    ) public virtual onlyRole(ADMIN_ROLE) {
-        AgentNFTStorage storage $ = _getAgentStorage();
-        $.chainURL = newChainURL;
-        $.indexerURL = newIndexerURL;
-    }
-
-    function update(uint256 tokenId, bytes[] calldata proofs) public virtual {
+    function update(uint256 tokenId, IntelligentData[] calldata newDatas) public virtual {
         AgentNFTStorage storage $ = _getAgentStorage();
         TokenData storage token = $.tokens[tokenId];
         require(token.owner == msg.sender, "Not owner");
-
-        PreimageProofOutput[] memory proofOutput = $.verifier.verifyPreimage(
-            proofs
-        );
-        bytes32[] memory newDataHashes = new bytes32[](proofOutput.length);
-
-        for (uint i = 0; i < proofOutput.length; i++) {
-            require(
-                proofOutput[i].isValid,
-                string(
-                    abi.encodePacked(
-                        "Invalid preimage proof at index ",
-                        i,
-                        " with data hash ",
-                        proofOutput[i].dataHash
-                    )
-                )
-            );
-            newDataHashes[i] = proofOutput[i].dataHash;
+        require(newDatas.length > 0, "Empty data array");
+  
+        IntelligentData[] memory oldDatas = new IntelligentData[](token.iDatas.length);
+        for (uint i = 0; i < token.iDatas.length; i++) {
+            oldDatas[i] = token.iDatas[i];
         }
 
-        bytes32[] memory oldDataHashes = token.dataHashes;
-        token.dataHashes = newDataHashes;
+        delete token.iDatas;
 
-        emit Updated(tokenId, oldDataHashes, newDataHashes);
+        for (uint i = 0; i < newDatas.length; i++) {
+            token.iDatas.push(newDatas[i]);
+        }
+
+        emit Updated(tokenId, oldDatas, newDatas);
     }
 
     function mint(
-        bytes[] calldata proofs,
-        string[] calldata dataDescriptions,
+        IntelligentData[] calldata iDatas,
         address to
     ) public payable virtual returns (uint256 tokenId) {
+        require(to != address(0), "Zero address");
+        require(iDatas.length > 0, "Empty data array");
+        
         AgentNFTStorage storage $ = _getAgentStorage();
-
-        require(
-            dataDescriptions.length == proofs.length,
-            "Descriptions and proofs length mismatch"
-        );
-
-        if (to == address(0)) {
-            to = msg.sender;
-        }
-
-        PreimageProofOutput[] memory proofOutput = $.verifier.verifyPreimage(
-            proofs
-        );
-        bytes32[] memory dataHashes = new bytes32[](proofOutput.length);
-
-        for (uint i = 0; i < proofOutput.length; i++) {
-            require(
-                proofOutput[i].isValid,
-                string(
-                    abi.encodePacked(
-                        "Invalid preimage proof at index ",
-                        i,
-                        " with data hash ",
-                        proofOutput[i].dataHash
-                    )
-                )
-            );
-            dataHashes[i] = proofOutput[i].dataHash;
-        }
 
         tokenId = $.nextTokenId++;
-        $.tokens[tokenId] = TokenData({
-            owner: to,
-            dataHashes: dataHashes,
-            dataDescriptions: dataDescriptions,
-            authorizedUsers: new address[](0),
-            approvedUser: address(0)
-        });
+        TokenData storage newToken = $.tokens[tokenId];
+        newToken.owner = to;
+        newToken.approvedUser = address(0);
+        
+        for (uint i = 0; i < iDatas.length; i++) {
+            newToken.iDatas.push(iDatas[i]);
+        }
 
-        emit Minted(tokenId, msg.sender, to, dataHashes, dataDescriptions);
+        emit Minted(tokenId, msg.sender, to);
     }
 
-    function transfer(
+    function _proofCheck(
+        address from,
         address to,
         uint256 tokenId,
-        bytes[] calldata proofs
-    ) public virtual {
+        TransferValidityProof[] calldata proofs
+    )
+        internal
+        returns (bytes[] memory sealedKeys, IntelligentData[] memory newDatas)
+    {
         AgentNFTStorage storage $ = _getAgentStorage();
         require(to != address(0), "Zero address");
-        require($.tokens[tokenId].owner == msg.sender, "Not owner");
+        require($.tokens[tokenId].owner == from, "Not owner");
+        require(proofs.length > 0, "Empty proofs array");
 
         TransferValidityProofOutput[] memory proofOutput = $
             .verifier
             .verifyTransferValidity(proofs);
-        bytes16[] memory sealedKeys = new bytes16[](proofOutput.length);
-        bytes32[] memory newDataHashes = new bytes32[](proofOutput.length);
-        bool isPrivate = (uint8(proofs[0][0]) & 0x40) != 0;
 
+        require(proofOutput.length == $.tokens[tokenId].iDatas.length, "Proof count mismatch");
+
+        sealedKeys = new bytes[](proofOutput.length);
+        newDatas = new IntelligentData[](proofOutput.length);
+        
         for (uint i = 0; i < proofOutput.length; i++) {
-            require(proofOutput[i].isValid, "Invalid transfer validity proof");
+            // require the initial data hash is the same as the old data hash
             require(
-                proofOutput[i].newDataHash ==
-                    $.tokens[tokenId].dataHashes[i],
-                "New data hash mismatch"
+                proofOutput[i].oldDataHash ==
+                    $.tokens[tokenId].iDatas[i].dataHash,
+                "Old data hash mismatch"
             );
-            if (isPrivate) {
-                require(proofOutput[i].receiver == to, "Receiver mismatch");
+
+            // only the receiver itself or the access assistant can sign the access proof
+            require(
+                proofOutput[i].accessAssistant == $.accessAssistants[to] ||
+                    proofOutput[i].accessAssistant == to,
+                "Access assistant mismatch"
+            );
+
+            bytes memory wantedKey = proofOutput[i].wantedKey;
+            bytes memory encryptedPubKey = proofOutput[i].encryptedPubKey;
+            if (wantedKey.length == 0) {
+                // if the wanted key is empty, the default wanted receiver is receiver itself
+                address defaultWantedReceiver = Utils.pubKeyToAddress(
+                    encryptedPubKey
+                );
+                require(
+                    defaultWantedReceiver == to,
+                    "Default wanted receiver mismatch"
+                );
+            } else {
+                // if the wanted key is not empty, the data is private
+                require(
+                    Utils.bytesEqual(encryptedPubKey, wantedKey),
+                    "encryptedPubKey mismatch"
+                );
             }
-            require(
-                proofOutput[i].realAccessor == $.delegateAccess[to] ||
-                    proofOutput[i].realAccessor == to,
-                "Accessor mismatch"
-            );
+
             sealedKeys[i] = proofOutput[i].sealedKey;
-            newDataHashes[i] = proofOutput[i].newDataHash;
+            newDatas[i] = IntelligentData({
+                dataDescription: $.tokens[tokenId].iDatas[i].dataDescription,
+                dataHash: proofOutput[i].newDataHash
+            });
         }
+        return (sealedKeys, newDatas);
+    }
 
-        $.tokens[tokenId].owner = to;
-        $.tokens[tokenId].dataHashes = newDataHashes;
+    function _transfer(
+        address from,
+        address to,
+        uint256 tokenId,
+        TransferValidityProof[] calldata proofs
+    ) internal {
+        AgentNFTStorage storage $ = _getAgentStorage();
+        (bytes[] memory sealedKeys, IntelligentData[] memory newDatas) = _proofCheck(
+            from,
+            to,
+            tokenId,
+            proofs
+        );
 
-        emit Transferred(tokenId, msg.sender, to);
+        TokenData storage token = $.tokens[tokenId];
+        token.owner = to;
+        token.approvedUser = address(0);
+        
+        delete token.iDatas;
+        for (uint i = 0; i < newDatas.length; i++) {
+            token.iDatas.push(newDatas[i]);
+        }
+        
+        emit Transferred(tokenId, from, to);
         emit PublishedSealedKey(to, tokenId, sealedKeys);
+    }
+
+    function iTransfer(
+        address to,
+        uint256 tokenId,
+        TransferValidityProof[] calldata proofs
+    ) public virtual {
+        require(_isApprovedOrOwner(msg.sender, tokenId), "Not authorized");
+        _transfer(ownerOf(tokenId), to, tokenId, proofs);
     }
 
     function transferFrom(
         address from,
         address to,
-        uint256 tokenId,
-        bytes[] calldata proofs
+        uint256 tokenId
     ) public virtual {
-        AgentNFTStorage storage $ = _getAgentStorage();
+        TokenData storage token = _getAgentStorage().tokens[tokenId];
+        require(_isApprovedOrOwner(msg.sender, tokenId), "Not authorized");
         require(to != address(0), "Zero address");
-        require($.tokens[tokenId].owner == from, "Not owner");
-        require(
-            $.tokens[tokenId].approvedUser == msg.sender ||
-                $.tokens[tokenId].owner == msg.sender ||
-                $.operatorApprovals[from][msg.sender],
-            "Not approved"
-        );
+        require(token.owner == from, "Not owner");
+        token.owner = to;
+        token.approvedUser = address(0);
 
-        bool isPrivate = (uint8(proofs[0][0]) & 0x40) != 0;
-
-        TransferValidityProofOutput[] memory proofOutput = $
-            .verifier
-            .verifyTransferValidity(proofs);
-        bytes16[] memory sealedKeys = new bytes16[](proofOutput.length);
-        bytes32[] memory newDataHashes = new bytes32[](proofOutput.length);
-
-
-        for (uint i = 0; i < proofOutput.length; i++) {
-            require(proofOutput[i].isValid, "Invalid transfer validity proof");
-            require(
-                proofOutput[i].newDataHash == $.tokens[tokenId].dataHashes[i],
-                "New data hash mismatch"
-            );
-            if (isPrivate) {
-                require(proofOutput[i].receiver == to, "Receiver mismatch");
-            }
-            require(
-                proofOutput[i].realAccessor == $.delegateAccess[to] ||
-                    proofOutput[i].realAccessor == to,
-                "Accessor mismatch"
-            );
-            sealedKeys[i] = proofOutput[i].sealedKey;
-            newDataHashes[i] = proofOutput[i].newDataHash;
-        }
-
-        $.tokens[tokenId].owner = to;
-        $.tokens[tokenId].dataHashes = newDataHashes;
-
-        emit Transferred(tokenId, msg.sender, to);
-        emit PublishedSealedKey(to, tokenId, sealedKeys);
+        emit Transferred(tokenId, from, to);
     }
 
-    function clone(
-        address to,
-        uint256 tokenId,
-        bytes[] calldata proofs
-    ) public virtual returns (uint256) {
-        AgentNFTStorage storage $ = _getAgentStorage();
-        require(to != address(0), "Zero address");
-        require($.tokens[tokenId].owner == msg.sender, "Not owner");
-
-        bool isPrivate = (uint8(proofs[0][0]) & 0x40) != 0;
-
-        TransferValidityProofOutput[] memory proofOutput = $
-            .verifier
-            .verifyTransferValidity(proofs);
-        bytes32[] memory newDataHashes = new bytes32[](proofOutput.length);
-        bytes16[] memory sealedKeys = new bytes16[](proofOutput.length);
-
-        for (uint i = 0; i < proofOutput.length; i++) {
-            require(proofOutput[i].isValid, "Invalid transfer validity proof");
-            require(
-                proofOutput[i].oldDataHash ==
-                    $.tokens[tokenId].dataHashes[i],
-                "Old data hash mismatch"
-            );
-            if (isPrivate) {
-                require(proofOutput[i].receiver == to, "Receiver mismatch");
-            }
-            require(
-                proofOutput[i].realAccessor == $.delegateAccess[to] ||
-                    proofOutput[i].realAccessor == to,
-                "Accessor mismatch"
-            );
-            sealedKeys[i] = proofOutput[i].sealedKey;
-            newDataHashes[i] = proofOutput[i].newDataHash;
-        }
-
-        uint256 newTokenId = $.nextTokenId++;
-        $.tokens[newTokenId] = TokenData({
-            owner: to,
-            dataHashes: newDataHashes,
-            dataDescriptions: $.tokens[tokenId].dataDescriptions,
-            authorizedUsers: new address[](0),
-            approvedUser: address(0)
-        });
-
-        emit Cloned(tokenId, newTokenId, msg.sender, to);
-        emit PublishedSealedKey(to, newTokenId, sealedKeys);
-        return newTokenId;
-    }
-
-    function cloneFrom(
+    function iTransferFrom(
         address from,
         address to,
         uint256 tokenId,
-        bytes[] calldata proofs
-    ) public virtual returns (uint256) {
-        AgentNFTStorage storage $ = _getAgentStorage();
-        require(to != address(0), "Zero address");
-        require($.tokens[tokenId].owner == from, "Not owner");
+        TransferValidityProof[] calldata proofs
+    ) public virtual {
+        require(_isApprovedOrOwner(msg.sender, tokenId), "Not authorized");
+        _transfer(from, to, tokenId, proofs);
+    }
 
-        require(
-            $.tokens[tokenId].approvedUser == msg.sender ||
-                $.tokens[tokenId].owner == msg.sender ||
-                $.operatorApprovals[from][msg.sender],
-            "Not approved"
+    function _clone(
+        address from,
+        address to,
+        uint256 tokenId,
+        TransferValidityProof[] calldata proofs
+    ) internal returns (uint256) {
+        AgentNFTStorage storage $ = _getAgentStorage();
+
+        (bytes[] memory sealedKeys, IntelligentData[] memory newDatas) = _proofCheck(
+            from,
+            to,
+            tokenId,
+            proofs
         );
 
-        TransferValidityProofOutput[] memory proofOutput = $
-            .verifier
-            .verifyTransferValidity(proofs);
-        bytes32[] memory newDataHashes = new bytes32[](proofOutput.length);
-        bytes16[] memory sealedKeys = new bytes16[](proofOutput.length);
-
-        bool isPrivate = (uint8(proofs[0][0]) & 0x40) != 0;
-
-        for (uint i = 0; i < proofOutput.length; i++) {
-            require(proofOutput[i].isValid, "Invalid transfer validity proof");
-            require(
-                proofOutput[i].oldDataHash ==
-                    $.tokens[tokenId].dataHashes[i],
-                "Old data hash mismatch"
-            );
-            if (isPrivate) {
-                require(proofOutput[i].receiver == to, "Receiver mismatch");
-            }
-            require(
-                proofOutput[i].realAccessor == $.delegateAccess[to] ||
-                    proofOutput[i].realAccessor == to,
-                "Accessor mismatch"
-            );
-
-            sealedKeys[i] = proofOutput[i].sealedKey;
-            newDataHashes[i] = proofOutput[i].newDataHash;
+        uint256 newTokenId = $.nextTokenId++;
+        TokenData storage newToken = $.tokens[newTokenId];
+        newToken.owner = to;
+        newToken.approvedUser = address(0);
+        
+        for (uint i = 0; i < newDatas.length; i++) {
+            newToken.iDatas.push(newDatas[i]);
         }
 
-        uint256 newTokenId = $.nextTokenId++;
-        $.tokens[newTokenId] = TokenData({
-            owner: to,
-            dataHashes: newDataHashes,
-            dataDescriptions: $.tokens[tokenId].dataDescriptions,
-            authorizedUsers: new address[](0),
-            approvedUser: address(0)
-        });
-
-        emit Cloned(tokenId, newTokenId, msg.sender, to);
+        emit Cloned(tokenId, newTokenId, from, to);
         emit PublishedSealedKey(to, newTokenId, sealedKeys);
+
         return newTokenId;
     }
 
+    function iClone(
+        address to,
+        uint256 tokenId,
+        TransferValidityProof[] calldata proofs
+    ) public virtual returns (uint256) {
+        require(_isApprovedOrOwner(msg.sender, tokenId), "Not authorized");
+        return _clone(ownerOf(tokenId), to, tokenId, proofs);
+    }
+
+    function iCloneFrom(
+        address from,
+        address to,
+        uint256 tokenId,
+        TransferValidityProof[] calldata proofs
+    ) public virtual returns (uint256) {
+        require(_isApprovedOrOwner(msg.sender, tokenId), "Not authorized");
+        return _clone(from, to, tokenId, proofs);
+    }
+
     function authorizeUsage(uint256 tokenId, address to) public virtual {
+        require(to != address(0), "Zero address");
         AgentNFTStorage storage $ = _getAgentStorage();
         require($.tokens[tokenId].owner == msg.sender, "Not owner");
-        $.tokens[tokenId].authorizedUsers.push(to);
+        
+        address[] storage authorizedUsers = $.tokens[tokenId].authorizedUsers;
+        for (uint i = 0; i < authorizedUsers.length; i++) {
+            require(authorizedUsers[i] != to, "Already authorized");
+        }
+        
+        authorizedUsers.push(to);
         emit Authorization(msg.sender, to, tokenId);
     }
 
     function ownerOf(uint256 tokenId) public view virtual returns (address) {
         AgentNFTStorage storage $ = _getAgentStorage();
-        TokenData storage token = $.tokens[tokenId];
-        require(token.owner != address(0), "Token not exist");
-        return token.owner;
+        address owner = $.tokens[tokenId].owner;
+        require(owner != address(0), "Token does not exist");
+        return owner;
     }
 
     function authorizedUsersOf(
         uint256 tokenId
     ) public view virtual returns (address[] memory) {
         AgentNFTStorage storage $ = _getAgentStorage();
-        TokenData storage token = $.tokens[tokenId];
-        require(token.owner != address(0), "Token not exist");
-        return token.authorizedUsers;
+        require(_exists(tokenId), "Token does not exist");
+        return $.tokens[tokenId].authorizedUsers;
     }
 
-    function tokenURI(
+    function storageInfo(
         uint256 tokenId
     ) public view virtual returns (string memory) {
-        AgentNFTStorage storage $ = _getAgentStorage();
         require(_exists(tokenId), "Token does not exist");
-
-        return
-            string(
-                abi.encodePacked(
-                    '{"chainURL":"',
-                    $.chainURL,
-                    '","indexerURL":"',
-                    $.indexerURL,
-                    '"}'
-                )
-            );
+        return _getAgentStorage().storageInfo;
     }
 
     function _exists(uint256 tokenId) internal view returns (bool) {
         return _getAgentStorage().tokens[tokenId].owner != address(0);
     }
 
-    function dataHashesOf(
+    function intelligentDatasOf(
         uint256 tokenId
-    ) public view virtual returns (bytes32[] memory) {
+    ) public view virtual returns (IntelligentData[] memory) {
         AgentNFTStorage storage $ = _getAgentStorage();
-        TokenData storage token = $.tokens[tokenId];
-        require(token.owner != address(0), "Token not exist");
-        return token.dataHashes;
-    }
-
-    function dataDescriptionsOf(
-        uint256 tokenId
-    ) public view virtual returns (string[] memory) {
-        AgentNFTStorage storage $ = _getAgentStorage();
-        TokenData storage token = $.tokens[tokenId];
-        require(token.owner != address(0), "Token not exist");
-        return token.dataDescriptions;
+        require(_exists(tokenId), "Token does not exist");
+        return $.tokens[tokenId].iDatas;
     }
 
     function approve(address to, uint256 tokenId) public virtual {
-        AgentNFTStorage storage $ = _getAgentStorage();
-        require($.tokens[tokenId].owner == msg.sender, "Not owner");
-        $.tokens[tokenId].approvedUser = to;
-        emit Approval(msg.sender, to, tokenId);
+        address owner = ownerOf(tokenId);
+        require(to != owner, "Approval to current owner");
+        require(
+            msg.sender == owner || isApprovedForAll(owner, msg.sender),
+            "Not authorized"
+        );
+
+        _getAgentStorage().tokens[tokenId].approvedUser = to;
+        emit Approval(owner, to, tokenId);
     }
 
-    function setApprovalForAll(address to, bool approved) public virtual {
-        AgentNFTStorage storage $ = _getAgentStorage();
-        $.operatorApprovals[msg.sender][to] = approved;
-        emit ApprovalForAll(msg.sender, to, approved);
+    function setApprovalForAll(address operator, bool approved) public virtual {
+        require(operator != msg.sender, "Approve to caller");
+        _getAgentStorage().operatorApprovals[msg.sender][operator] = approved;
+        emit ApprovalForAll(msg.sender, operator, approved);
     }
 
     function getApproved(
         uint256 tokenId
-    ) public view virtual returns (address operator) {
-        AgentNFTStorage storage $ = _getAgentStorage();
-        return $.tokens[tokenId].approvedUser;
+    ) public view virtual returns (address) {
+        require(_exists(tokenId), "Token does not exist");
+        return _getAgentStorage().tokens[tokenId].approvedUser;
     }
 
     function isApprovedForAll(
         address owner,
         address operator
     ) public view virtual returns (bool) {
-        AgentNFTStorage storage $ = _getAgentStorage();
-        return $.operatorApprovals[owner][operator];
+        return _getAgentStorage().operatorApprovals[owner][operator];
     }
 
-    function delegateAccess(address realAccessor) public virtual {
-        AgentNFTStorage storage $ = _getAgentStorage();
-        $.delegateAccess[msg.sender] = realAccessor;
+    function delegateAccess(address assistant) public virtual {
+        require(assistant != address(0), "Zero address");
+        _getAgentStorage().accessAssistants[msg.sender] = assistant;
+        emit DelegateAccess(msg.sender, assistant);
     }
 
-    function getDelegateAccess(address user) public view virtual returns (address) {
+    function getDelegateAccess(
+        address user
+    ) public view virtual returns (address) {
+        return _getAgentStorage().accessAssistants[user];
+    }
+
+    function _isApprovedOrOwner(address spender, uint256 tokenId) internal view returns (bool) {
+        require(_exists(tokenId), "Token does not exist");
+        address owner = ownerOf(tokenId);
+        return (spender == owner || getApproved(tokenId) == spender || isApprovedForAll(owner, spender));
+    }
+
+    function batchAuthorizeUsage(uint256 tokenId, address[] calldata users) public virtual {
+        require(users.length > 0, "Empty users array");
         AgentNFTStorage storage $ = _getAgentStorage();
-        return $.delegateAccess[user];
+        require($.tokens[tokenId].owner == msg.sender, "Not owner");
+        
+        for (uint i = 0; i < users.length; i++) {
+            require(users[i] != address(0), "Zero address in users");
+            $.tokens[tokenId].authorizedUsers.push(users[i]);
+            emit Authorization(msg.sender, users[i], tokenId);
+        }
+    }
+
+    function revokeAuthorization(uint256 tokenId, address user) public virtual {
+        AgentNFTStorage storage $ = _getAgentStorage();
+        require($.tokens[tokenId].owner == msg.sender, "Not owner");
+        
+        address[] storage authorizedUsers = $.tokens[tokenId].authorizedUsers;
+        for (uint i = 0; i < authorizedUsers.length; i++) {
+            if (authorizedUsers[i] == user) {
+                authorizedUsers[i] = authorizedUsers[authorizedUsers.length - 1];
+                authorizedUsers.pop();
+                break;
+            }
+        }
     }
 }

@@ -32,7 +32,7 @@ contract AgentMarket is
 
     mapping(address => uint256) public feeBalances;
     mapping(uint256 => bool) public usedOrders;
-    mapping(uint256 => bool) public usedConfirmations;
+    mapping(uint256 => bool) public usedOffers;
 
     string public constant VERSION = "1.0.0";
 
@@ -115,25 +115,29 @@ contract AgentMarket is
     // core transaction function
     function fulfillOrder(
         Order calldata order,
-        OrderConfirmation calldata confirmation,
-        bytes[] calldata proofs
+        Offer calldata offer,
+        TransferValidityProof[] calldata proofs
     ) external payable override nonReentrant whenNotPaused {
-        // 1. verify order and confirmation:
+        // 1. verify order and offer:
         // 1.1 verify signature
         // 1.2 verify expiration
         // 1.3 verify nonce is not used
         // 1.4 verify NFT owner is seller
         // 1.5 verify offerPrice >= expectedPrice
         address seller = _validateOrder(order);
-        address buyer = _validateConfirmation(confirmation, order);
+        address buyer = _validateOffer(offer, order);
 
         // 2. transfer iNFT
-        AgentNFT(agentNFT).transferFrom(seller, buyer, order.tokenId, proofs);
+        if (proofs.length > 0) {
+            AgentNFT(agentNFT).iTransferFrom(seller, buyer, order.tokenId, proofs);
+        } else {
+            AgentNFT(agentNFT).transferFrom(seller, buyer, order.tokenId);
+        }
 
         // 3. transfer erc20 token
-        if (confirmation.offerPrice > 0) {
+        if (offer.offerPrice > 0) {
             _handlePayment(
-                confirmation.offerPrice,
+                offer.offerPrice,
                 order.currency,
                 buyer,
                 seller
@@ -143,15 +147,15 @@ contract AgentMarket is
         if (order.receiver != address(0)) {
             require(buyer == order.receiver, "Receiver mismatch");
         }
-        // 4. mark order and confirmation as used
+        // 4. mark order and offer as used
         usedOrders[uint256(keccak256(order.nonce))] = true;
-        usedConfirmations[uint256(keccak256(confirmation.nonce))] = true;
+        usedOffers[uint256(keccak256(offer.nonce))] = true;
 
         emit OrderFulfilled(
             seller,
             buyer,
             order.tokenId,
-            confirmation.offerPrice,
+            offer.offerPrice,
             order.currency
         );
     }
@@ -176,24 +180,24 @@ contract AgentMarket is
         return seller;
     }
 
-    function _validateConfirmation(
-        OrderConfirmation calldata confirmation,
+    function _validateOffer(
+        Offer calldata offer,
         Order calldata order
     ) internal view returns (address) {
         require(
-            block.timestamp <= confirmation.expireTime,
-            "Confirmation expired"
+            block.timestamp <= offer.expireTime,
+            "Offer expired"
         );
         require(
-            confirmation.offerPrice >= order.expectedPrice,
+            offer.offerPrice >= order.expectedPrice,
             "Price too low"
         );
-        require(confirmation.tokenId == order.tokenId, "TokenId mismatch");
+        require(offer.tokenId == order.tokenId, "TokenId mismatch");
 
-        address buyer = _verifyConfirmationSignature(confirmation);
+        address buyer = _verifyOfferSignature(offer);
         require(
-            !usedConfirmations[uint256(keccak256(confirmation.nonce))],
-            "Confirmation already used"
+            !usedOffers[uint256(keccak256(offer.nonce))],
+            "Offer already used"
         );
 
         return buyer;
@@ -222,27 +226,27 @@ contract AgentMarket is
         return seller;
     }
 
-    function _verifyConfirmationSignature(
-        OrderConfirmation calldata confirmation
+    function _verifyOfferSignature(
+        Offer calldata offer
     ) internal pure returns (address) {
-        bytes32 confirmationHashHex = keccak256(
+        bytes32 offerHashHex = keccak256(
             abi.encodePacked(
-                confirmation.tokenId,
-                confirmation.offerPrice,
-                confirmation.expireTime,
-                confirmation.nonce
+                offer.tokenId,
+                offer.offerPrice,
+                offer.expireTime,
+                offer.nonce
             )
         );
 
         string memory message = Strings.toHexString(
-            uint256(confirmationHashHex),
+            uint256(offerHashHex),
             32
         );
         bytes32 ethSignedHash = keccak256(
             abi.encodePacked("\x19Ethereum Signed Message:\n66", message)
         );
 
-        address buyer = ethSignedHash.recover(confirmation.signature);
+        address buyer = ethSignedHash.recover(offer.signature);
         return buyer;
     }
 

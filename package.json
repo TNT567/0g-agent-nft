@@ -8,7 +8,8 @@
     "deploy": "hardhat deploy --network",
     "verify": "hardhat verify",
     "coverage": "hardhat coverage",
-    "upgrade": "hardhat run scripts/upgrade.ts --network"
+    "upgrade": "hardhat run scripts/upgrade.ts --network",
+    "clean-stuck-tx": "ts-node scripts/clean_stuck_tx.ts"
   },
   "keywords": [],
   "author": "wei <wei.wu.life@gmail.com>",
