@@ -162,6 +162,9 @@ contract AgentMarket is
     }
 
     function deposit(address account) external payable {
+        require(msg.value > 0, "Must send ETH");
+        require(account != address(0), "Invalid address");
+        require(!paused(), "Contract is paused");
         balances[account] += msg.value;
     }
 
@@ -204,6 +207,10 @@ contract AgentMarket is
             !usedOffers[uint256(keccak256(offer.nonce))],
             "Offer already used"
         );
+
+        if (order.receiver != address(0)) {
+            require(buyer == order.receiver, "Receiver mismatch");
+        }
 
         return buyer;
     }
