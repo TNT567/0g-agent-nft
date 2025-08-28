@@ -169,12 +169,11 @@ contract AgentMarket is
         emit Deposit(account, balances[account]);
     }
 
-    function withdraw(address account) external {
-        require(balances[account] > 0, "No balance to withdraw");
+    function withdraw(address account, uint256 amount) external {
+        require(balances[account] >= amount, "Insufficient balance");
         require(account != address(0), "Invalid address");
         require(!paused(), "Contract is paused");
-        uint256 amount = balances[account];
-        balances[account] = 0;
+        balances[account] -= amount;
         payable(account).transfer(amount);
         emit Withdraw(account, amount);
     }
