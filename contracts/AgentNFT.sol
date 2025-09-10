@@ -19,50 +19,11 @@ contract AgentNFT is
         IntelligentData[] _newDatas
     );
 
-    event Approval(
-        address indexed _from,
-        address indexed _to,
-        uint256 indexed _tokenId
-    );
-
-    event ApprovalForAll(
-        address indexed _owner,
-        address indexed _operator,
-        bool _approved
-    );
-
     event Minted(
         uint256 indexed _tokenId,
         address indexed _creator,
         address indexed _owner
     );
-
-    event Authorization(
-        address indexed _from,
-        address indexed _to,
-        uint256 indexed _tokenId
-    );
-
-    event Transferred(
-        uint256 _tokenId,
-        address indexed _from,
-        address indexed _to
-    );
-
-    event Cloned(
-        uint256 indexed _tokenId,
-        uint256 indexed _newTokenId,
-        address _from,
-        address _to
-    );
-
-    event PublishedSealedKey(
-        address indexed _to,
-        uint256 indexed _tokenId,
-        bytes[] _sealedKeys
-    );
-
-    event DelegateAccess(address indexed _user, address indexed _assistant);
 
     struct TokenData {
         address owner;
@@ -495,16 +456,23 @@ contract AgentNFT is
     function revokeAuthorization(uint256 tokenId, address user) public virtual {
         AgentNFTStorage storage $ = _getAgentStorage();
         require($.tokens[tokenId].owner == msg.sender, "Not owner");
+        require(user != address(0), "Zero address");
 
         address[] storage authorizedUsers = $.tokens[tokenId].authorizedUsers;
+        bool found = false;
+
         for (uint i = 0; i < authorizedUsers.length; i++) {
             if (authorizedUsers[i] == user) {
                 authorizedUsers[i] = authorizedUsers[
                     authorizedUsers.length - 1
                 ];
                 authorizedUsers.pop();
+                found = true;
                 break;
             }
         }
+
+        require(found, "User not authorized");
+        emit AuthorizationRevoked(msg.sender, user, tokenId);
     }
 }
