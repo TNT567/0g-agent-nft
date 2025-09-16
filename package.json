@@ -6,7 +6,8 @@
   "scripts": {
     "compile": "hardhat compile",
     "deploy": "hardhat deploy --network",
-    "verify": "hardhat verify",
+    "verify": "ts-node scripts/verify_contract.ts",
+    "verify:zgTestnet": "ts-node scripts/verify_contract.ts zg_testnet",
     "coverage": "hardhat coverage",
     "upgrade": "hardhat run scripts/upgrade.ts --network",
     "clean-stuck-tx": "ts-node scripts/clean_stuck_tx.ts",
