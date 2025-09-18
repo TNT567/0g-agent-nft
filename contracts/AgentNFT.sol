@@ -55,6 +55,8 @@ contract AgentNFT is
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 
+    uint256 public constant MAX_AUTHORIZED_USERS = 100;
+
     string public constant VERSION = "2.0.0";
 
     // keccak256(abi.encode(uint(keccak256("agent.storage.AgentNFT")) - 1)) & ~bytes32(uint(0xff))
@@ -84,6 +86,7 @@ contract AgentNFT is
         address admin_
     ) public virtual initializer {
         require(verifierAddr != address(0), "Zero address");
+        require(admin_ != address(0), "Invalid admin address");
 
         __AccessControl_init();
         __ReentrancyGuard_init();
@@ -277,6 +280,9 @@ contract AgentNFT is
         token.owner = to;
         token.approvedUser = address(0);
 
+        // Clear authorized users on transfer
+        delete token.authorizedUsers;
+
         delete token.iDatas;
         for (uint i = 0; i < newDatas.length; i++) {
             token.iDatas.push(newDatas[i]);
@@ -306,6 +312,9 @@ contract AgentNFT is
         require(token.owner == from, "Not owner");
         token.owner = to;
         token.approvedUser = address(0);
+
+        // Clear authorized users on transfer
+        delete token.authorizedUsers;
 
         emit Transferred(tokenId, from, to);
     }
@@ -373,6 +382,12 @@ contract AgentNFT is
         require($.tokens[tokenId].owner == msg.sender, "Not owner");
 
         address[] storage authorizedUsers = $.tokens[tokenId].authorizedUsers;
+
+        require(
+            authorizedUsers.length < MAX_AUTHORIZED_USERS,
+            "Too many authorized users"
+        );
+
         for (uint i = 0; i < authorizedUsers.length; i++) {
             require(authorizedUsers[i] != to, "Already authorized");
         }
@@ -478,9 +493,30 @@ contract AgentNFT is
         AgentNFTStorage storage $ = _getAgentStorage();
         require($.tokens[tokenId].owner == msg.sender, "Not owner");
 
+        address[] storage authorizedUsers = $.tokens[tokenId].authorizedUsers;
+
+        require(
+            authorizedUsers.length + users.length <= MAX_AUTHORIZED_USERS,
+            "Too many authorized users"
+        );
+
         for (uint i = 0; i < users.length; i++) {
             require(users[i] != address(0), "Zero address in users");
-            $.tokens[tokenId].authorizedUsers.push(users[i]);
+
+            bool alreadyAuthorized = false;
+            for (uint j = 0; j < authorizedUsers.length; j++) {
+                if (authorizedUsers[j] == users[i]) {
+                    alreadyAuthorized = true;
+                    break;
+                }
+            }
+            require(!alreadyAuthorized, "User already authorized");
+
+            for (uint k = 0; k < i; k++) {
+                require(users[k] != users[i], "Duplicate user in batch");
+            }
+
+            authorizedUsers.push(users[i]);
             emit Authorization(msg.sender, users[i], tokenId);
         }
     }
@@ -507,4 +543,17 @@ contract AgentNFT is
         require(found, "User not authorized");
         emit AuthorizationRevoked(msg.sender, user, tokenId);
     }
+
+    function clearAuthorizedUsers(uint256 tokenId) public virtual {
+        AgentNFTStorage storage $ = _getAgentStorage();
+        require($.tokens[tokenId].owner == msg.sender, "Not owner");
+
+        delete $.tokens[tokenId].authorizedUsers;
+        emit AuthorizedUsersCleared(msg.sender, tokenId);
+    }
+
+    event AuthorizedUsersCleared(
+        address indexed owner,
+        uint256 indexed tokenId
+    );
 }

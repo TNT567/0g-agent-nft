@@ -51,6 +51,8 @@ contract Verifier is
         AttestationConfig[] calldata _attestationConfigs,
         address _admin
     ) external initializer {
+        require(_admin != address(0), "Invalid admin address");
+        
         __AccessControl_init();
         __Pausable_init();
         __ReentrancyGuard_init();
@@ -62,6 +64,9 @@ contract Verifier is
         }
         maxProofAge = 7 days;
 
+        // Set admin state variable
+        admin = _admin;
+        
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(ADMIN_ROLE, _admin);
         _grantRole(PAUSER_ROLE, _admin);
@@ -80,9 +85,12 @@ contract Verifier is
             _grantRole(ADMIN_ROLE, newAdmin);
             _grantRole(PAUSER_ROLE, newAdmin);
 
-            _revokeRole(DEFAULT_ADMIN_ROLE, oldAdmin);
-            _revokeRole(ADMIN_ROLE, oldAdmin);
-            _revokeRole(PAUSER_ROLE, oldAdmin);
+            // Only revoke if oldAdmin is not address(0)
+            if (oldAdmin != address(0)) {
+                _revokeRole(DEFAULT_ADMIN_ROLE, oldAdmin);
+                _revokeRole(ADMIN_ROLE, oldAdmin);
+                _revokeRole(PAUSER_ROLE, oldAdmin);
+            }
 
             emit AdminChanged(oldAdmin, newAdmin);
         }
@@ -114,8 +122,8 @@ contract Verifier is
         _unpause();
     }
 
-    function hashNonce(bytes memory nonce) private pure returns (bytes32) {
-        return keccak256(nonce);
+    function hashNonce(bytes memory nonce) private view returns (bytes32) {
+        return keccak256(abi.encode(nonce, msg.sender));
     }
 
     function teeOracleVerify(

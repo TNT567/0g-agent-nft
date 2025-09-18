@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import "./interfaces/IAgentMarket.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
@@ -20,6 +21,7 @@ contract AgentMarket is
 {
     using ECDSA for bytes32;
     using MessageHashUtils for bytes32;
+    using SafeERC20 for IERC20;
 
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
@@ -105,15 +107,14 @@ contract AgentMarket is
         uint256 amount = feeBalances[currency];
         require(amount > 0, "No fees to withdraw");
 
-        feeBalances[currency] = 0;
-
         if (currency == address(0)) {
             // withdraw A0GI
-            payable(admin).transfer(amount);
+            _safeTransferNative(admin, amount);
         } else {
-            // withdraw ERC20
-            IERC20(currency).transfer(admin, amount);
+            // withdraw ERC20 - only update balance after successful transfer
+            IERC20(currency).safeTransfer(admin, amount);
         }
+        feeBalances[currency] = 0;
 
         emit FeesWithdrawn(admin, currency, amount);
     }
@@ -183,7 +184,7 @@ contract AgentMarket is
         require(account != address(0), "Invalid address");
         require(!paused(), "Contract is paused");
         balances[account] -= amount;
-        payable(account).transfer(amount);
+        _safeTransferNative(account, amount);
         emit Withdraw(account, amount);
     }
 
@@ -305,11 +306,11 @@ contract AgentMarket is
         // native token
         if (currency == address(0)) {
             require(balances[buyer] >= totalAmount, "Insufficient balance");
-            payable(seller).transfer(sellerAmount);
+            _safeTransferNative(seller, sellerAmount);
             balances[buyer] -= totalAmount;
         } else {
-            token.transferFrom(buyer, seller, sellerAmount);
-            token.transferFrom(buyer, address(this), fee);
+            token.safeTransferFrom(buyer, seller, sellerAmount);
+            token.safeTransferFrom(buyer, address(this), fee);
         }
         feeBalances[currency] += fee;
     }
@@ -322,6 +323,14 @@ contract AgentMarket is
         address currency
     ) external view override returns (uint256) {
         return feeBalances[currency];
+    }
+
+    function _safeTransferNative(address to, uint256 amount) internal {
+        require(to != address(0), "Invalid recipient");
+        require(amount > 0, "Invalid amount");
+        
+        (bool success, ) = payable(to).call{value: amount}("");
+        require(success, "Native token transfer failed");
     }
 
     function pause() external override onlyRole(PAUSER_ROLE) {
