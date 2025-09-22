@@ -31,6 +31,8 @@ contract AgentMarket is
     uint256 public constant MAX_FEE_RATE = 1000;
     // 0.1 0G: 100000000000000000
     uint256 private mintFee;
+    // 0 0G: 0
+    uint256 private discountMintFee;
 
     address public agentNFT;
 
@@ -50,7 +52,8 @@ contract AgentMarket is
         address _agentNFT,
         uint256 _initialFeeRate,
         address _admin,
-        uint256 _initialMintFee
+        uint256 _initialMintFee,
+        uint256 _initialDiscountMintFee
     ) external initializer {
         __AccessControl_init();
         __Pausable_init();
@@ -64,6 +67,7 @@ contract AgentMarket is
         agentNFT = _agentNFT;
         feeRate = _initialFeeRate;
         mintFee = _initialMintFee;
+        discountMintFee = _initialDiscountMintFee;
 
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(ADMIN_ROLE, _admin);
@@ -100,9 +104,12 @@ contract AgentMarket is
         emit FeeRateUpdated(oldFeeRate, newFeeRate);
     }
 
+    event AgentNFTUpdated(address oldAgentNFT, address newAgentNFT);
     function setAgentNFT(address _agentNFT) external onlyRole(ADMIN_ROLE) {
         require(_agentNFT != address(0), "Invalid AgentNFT address");
+        address oldAgentNFT = agentNFT;
         agentNFT = _agentNFT;
+        emit AgentNFTUpdated(oldAgentNFT, _agentNFT);
     }
 
     function withdrawFees(
@@ -344,19 +351,43 @@ contract AgentMarket is
         emit MintFeeUpdated(mintFee);
     }
 
+    event DiscountMintFeeUpdated(uint256 discountMintFee);
+    function setDiscountMintFee(
+        uint256 newDiscountMintFee
+    ) external onlyRole(ADMIN_ROLE) {
+        discountMintFee = newDiscountMintFee;
+        emit DiscountMintFeeUpdated(discountMintFee);
+    }
+
     function getMintFee() external view returns (uint256) {
         return mintFee;
     }
 
+    function getDiscountMintFee() external view returns (uint256) {
+        return discountMintFee;
+    }
+
+    event PaidMinted(
+        uint256 indexed tokenId,
+        address indexed from,
+        address indexed to,
+        uint256 mintFee
+    );
     function paidMint(
         IntelligentData[] calldata iDatas,
-        address to
+        address to,
+        bool isDiscount
     ) external onlyRole(ADMIN_ROLE) {
-        require(balances[to] >= mintFee, "Insufficient balance for mint fee");
+        uint256 requiredFee = isDiscount ? discountMintFee : mintFee;
+        require(
+            balances[to] >= requiredFee,
+            "Insufficient balance for mint fee"
+        );
         require(to != address(0), "Invalid recipient");
         require(!paused(), "Contract is paused");
-        balances[to] -= mintFee;
-        AgentNFT(agentNFT).mint(iDatas, to);
+        balances[to] -= requiredFee;
+        uint256 tokenId = AgentNFT(agentNFT).mint(iDatas, to);
+        emit PaidMinted(tokenId, msg.sender, to, requiredFee);
     }
 
     function pause() external override onlyRole(PAUSER_ROLE) {
