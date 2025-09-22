@@ -386,6 +386,7 @@ contract AgentMarket is
         require(to != address(0), "Invalid recipient");
         require(!paused(), "Contract is paused");
         balances[to] -= requiredFee;
+        feeBalances[address(0)] += requiredFee;
         uint256 tokenId = AgentNFT(agentNFT).mint(iDatas, to);
         emit PaidMinted(tokenId, msg.sender, to, requiredFee);
     }
