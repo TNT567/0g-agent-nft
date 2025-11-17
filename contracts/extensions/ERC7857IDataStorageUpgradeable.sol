@@ -30,6 +30,11 @@ contract ERC7857IDataStorageUpgradeable is ERC7857Upgradeable {
         return $.iDatas[tokenId];
     }
 
+    function _intelligentDatasLengthOf(uint tokenId) internal view virtual override returns (uint) {
+        ERC7857IDataStorageStorage storage $ = _getERC7857IDataStorageStorage();
+        return $.iDatas[tokenId].length;
+    }
+
     function _updateData(uint256 tokenId, IntelligentData[] memory newDatas) internal virtual override {
         ERC7857IDataStorageStorage storage $ = _getERC7857IDataStorageStorage();
 

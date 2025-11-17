@@ -10,6 +10,7 @@ interface IERC7857 is IERC721, IERC7857Metadata {
     error ERC7857EmptyProof();
     error ERC7857ProofCountMismatch();
     error ERC7857DataHashMismatch();
+    error ERC7857DataNotEmpty();
     error ERC7857AccessAssistantMismatch();
     error ERC7857WantedReceiverMismatch();
     error ERC7857EncryptedPubKeyMismatch();

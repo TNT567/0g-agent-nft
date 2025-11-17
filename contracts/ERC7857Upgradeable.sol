@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
+import {ERC721Upgradeable, IERC721} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {ERC165Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
 
@@ -136,12 +136,10 @@ contract ERC7857Upgradeable is IERC7857, ERC721Upgradeable {
         }
     }
 
-    function _updateData(uint256 tokenId, IntelligentData[] memory newDatas) internal virtual {}
-
     function _transfer(address from, address to, uint256 tokenId, TransferValidityProof[] calldata proofs) internal {
         (bytes[] memory sealedKeys, IntelligentData[] memory newDatas) = _proofCheck(from, to, tokenId, proofs);
 
-        _transfer(from, to, tokenId);
+        safeTransferFrom(from, to, tokenId);
 
         _updateData(tokenId, newDatas);
 
@@ -162,10 +160,24 @@ contract ERC7857Upgradeable is IERC7857, ERC721Upgradeable {
      * @notice Empty by default, can be overridden in child contracts.
      */
     function _intelligentDatasOf(
-        uint //_tokenId
+        uint //tokenId
     ) internal view virtual returns (IntelligentData[] memory) {
         return new IntelligentData[](0);
     }
+
+    /**
+     * @notice Empty by default, can be overridden in child contracts.
+     */
+    function _intelligentDatasLengthOf(
+        uint //tokenId
+    ) internal view virtual returns (uint) {
+        return 0;
+    }
+
+    /**
+     * @notice Empty by default, can be overridden in child contracts.
+     */
+    function _updateData(uint256 tokenId, IntelligentData[] memory newDatas) internal virtual {}
 
     function intelligentDatasOf(uint256 tokenId) public view virtual returns (IntelligentData[] memory) {
         if (_ownerOf(tokenId) == address(0)) {
@@ -177,5 +189,18 @@ contract ERC7857Upgradeable is IERC7857, ERC721Upgradeable {
     function verifier() public view virtual returns (IERC7857DataVerifier) {
         ERC7857Storage storage $ = _getERC7857Storage();
         return $.verifier;
+    }
+
+    /*=== override ERC721 ===*/
+    function transferFrom(
+        address from,
+        address to,
+        uint256 tokenId
+    ) public virtual override(ERC721Upgradeable, IERC721) {
+        // Disallow any NFT that contains intelligence data from performing 721 transfers that don’t require a proof
+        if (_intelligentDatasLengthOf(tokenId) != 0) {
+            revert ERC7857DataNotEmpty();
+        }
+        super.transferFrom(from, to, tokenId);
     }
 }

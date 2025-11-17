@@ -161,7 +161,7 @@ contract AgentNFT is
         address to,
         uint256 tokenId,
         address auth
-    ) internal override(ERC721Upgradeable, ERC7857AuthorizeUpgradeable) returns (address) {
+    ) internal virtual override(ERC721Upgradeable, ERC7857AuthorizeUpgradeable) returns (address) {
         address from = super._update(to, tokenId, auth);
 
         return from;
