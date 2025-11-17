@@ -10,6 +10,7 @@ import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import "./extensions/ERC7857CloneableUpgradeable.sol";
 import "./extensions/ERC7857AuthorizeUpgradeable.sol";
+import "./extensions/ERC7857IDataStorageUpgradeable.sol";
 import "./interfaces/IERC7857DataVerifier.sol";
 import "./Utils.sol";
 
@@ -18,7 +19,8 @@ contract AgentNFT is
     ReentrancyGuardUpgradeable,
     PausableUpgradeable,
     ERC7857CloneableUpgradeable,
-    ERC7857AuthorizeUpgradeable
+    ERC7857AuthorizeUpgradeable,
+    ERC7857IDataStorageUpgradeable
 {
     /// @notice The event emitted when the admin is changed
     /// @param _oldAdmin The old admin
@@ -165,5 +167,30 @@ contract AgentNFT is
         address from = super._update(to, tokenId, auth);
 
         return from;
+    }
+
+    function _updateData(
+        uint256 tokenId,
+        IntelligentData[] memory newDatas
+    ) internal override(ERC7857IDataStorageUpgradeable, ERC7857Upgradeable) {
+        ERC7857IDataStorageUpgradeable._updateData(tokenId, newDatas);
+    }
+
+    function _intelligentDatasOf(
+        uint tokenId
+    )
+        internal
+        view
+        virtual
+        override(ERC7857IDataStorageUpgradeable, ERC7857Upgradeable)
+        returns (IntelligentData[] memory)
+    {
+        return ERC7857IDataStorageUpgradeable._intelligentDatasOf(tokenId);
+    }
+
+    function _intelligentDatasLengthOf(
+        uint tokenId
+    ) internal view virtual override(ERC7857IDataStorageUpgradeable, ERC7857Upgradeable) returns (uint) {
+        return ERC7857IDataStorageUpgradeable._intelligentDatasLengthOf(tokenId);
     }
 }
