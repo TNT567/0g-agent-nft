@@ -139,8 +139,7 @@ contract ERC7857Upgradeable is IERC7857, ERC721Upgradeable {
     function _transfer(address from, address to, uint256 tokenId, TransferValidityProof[] calldata proofs) internal {
         (bytes[] memory sealedKeys, IntelligentData[] memory newDatas) = _proofCheck(from, to, tokenId, proofs);
 
-        // use ERC721 transferFrom to avoid data length check
-        ERC721Upgradeable.transferFrom(from, to, tokenId);
+        transferFrom(from, to, tokenId);
 
         _updateData(tokenId, newDatas);
 
@@ -190,18 +189,5 @@ contract ERC7857Upgradeable is IERC7857, ERC721Upgradeable {
     function verifier() public view virtual returns (IERC7857DataVerifier) {
         ERC7857Storage storage $ = _getERC7857Storage();
         return $.verifier;
-    }
-
-    /*=== override ERC721 ===*/
-    function transferFrom(
-        address from,
-        address to,
-        uint256 tokenId
-    ) public virtual override(ERC721Upgradeable, IERC721) {
-        // Disallow any NFT that contains intelligence data from performing 721 transfers that don’t require a proof
-        if (_intelligentDatasLengthOf(tokenId) != 0) {
-            revert ERC7857DataNotEmpty();
-        }
-        super.transferFrom(from, to, tokenId);
     }
 }
