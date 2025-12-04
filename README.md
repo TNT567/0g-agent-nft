@@ -1,56 +1,74 @@
-**总体流程**
-- 配置环境变量，指向你的 AIVerse 测试网账户私钥
-- 编译合约，部署 `TEEVerifier` 和 `AgentNFT`（BeaconProxy）
-- 运行 mint 脚本，传入符合验证器要求的 `proofs` 与 `dataDescriptions`
-- 在 ChainScan 验证合约与交易
+
+如何独立完成在 AIVerse（0G Galileo 测试网）部署 iNFT 合约并在其上 mint 一个 iNFT
+
+**你需要做的**
+- 每一步只用复制命令、按说明操作即可；不用改代码
 
 **准备环境**
-- 在项目根目录创建或更新 `dev.env`（！！！！！）
-- 必填变量：
-  - `ZG_TESTNET_PRIVATE_KEY=0x你的私钥（64位十六进制，带0x前缀）`（点开你插件的头像然后有个查看密钥）
-- 可选变量（不填用默认）：
-  - `ZG_NFT_NAME`、`ZG_NFT_SYMBOL`、`ZG_RPC_URL`、`ZG_INDEXER_URL`
-- 环境变量加载位置：`hardhat.config.ts:6-7`
-- 自动加载 `dev.env`：`hardhat.config.ts:8-12`
+- 安装 Node.js（建议 LTS）和 pnpm
+- 打开终端，进入项目目录：`d:\项目合集\0g-agent-nft`
 
-**编译与部署**
+**配置钱包与环境变量**
+- 获取你的测试网地址对应的私钥（例如在 MetaMask：账户详情 → 导出私钥），注意不是地址
+- 打开并填写环境文件：`d:\..\0g-agent-nft\dev.env`
+- 内容示例（你已写好，确保私钥正确）
+  ```
+  ZG_TESTNET_PRIVATE_KEY=0x你的私钥（64位十六进制，带0x前缀）
+  ZG_NFT_NAME=My iNFT
+  ZG_NFT_SYMBOL=MYAI
+  ZG_RPC_URL=https://evmrpc-testnet.0g.ai
+  ZG_INDEXER_URL=https://indexer-storage-testnet-turbo.0g.ai
+  ```
+- 项目会自动加载该文件（`hardhat.config.ts:6-12`）
+
+**安装与编译**
 - 安装依赖：`pnpm install`
-- 编译：`pnpm hardhat compile`
-- 部署到 AIVerse 测试网（0G Galileo）：`pnpm hardhat deploy --network zgTestnet`
-  - 初始化参数来源：`scripts/deploy/deploy.ts:16-20`
-  - 初始化编码与代理部署：`scripts/deploy/deploy.ts:22-39`
-  - 网络配置（链 ID 已设置为 16602）：`hardhat.config.ts:48-54`
+- 编译合约：`pnpm hardhat compile`
 
-**在 AIVerse 测试网 mint iNFT**
+**部署到测试网**
+- 运行部署命令：`pnpm hardhat deploy --network zgTestnet`
+- 这一步会自动部署：
+  - 验证器 `TEEVerifier`
+  - `AgentNFT` 的实现合约与 Beacon
+  - 代理合约（交互入口）并完成初始化
+- 网络配置（链 ID 16602）：`hardhat.config.ts:48-54`
+- 初始化参数来源：`scripts/deploy/deploy.ts:16-20`
+
+**在测试网 mint 一个 iNFT**
 - 运行：`pnpm hardhat run scripts/mint.ts --network zgTestnet`
-- 脚本逻辑要点：
-  - 构造两个 `dataDescriptions` 与两个 32 字节 `proofs`（`TEEVerifier` 要求）
-  - 使用代理地址连接 `AgentNFT` 并调用 `mint`
-- `TEEVerifier` 预映像校验：`contracts/verifiers/TEEVerifier.sol:18-33`
-- `iNFT` 的 `mint` 接口与实现：
-  - 接口：`contracts/interfaces/IERC7857.sol:46-55`
-  - 实现：`contracts/AgentNFT.sol:134-177`
+- 脚本会：
+  - 构造两条数据描述与对应 32 字节哈希（满足验证器格式要求）
+  - 通过代理地址调用 `mint` 完成铸造
+- iNFT `mint` 定义：`contracts/interfaces/IERC7857.sol:46-55`
+- iNFT `mint` 实现：`contracts/AgentNFT.sol:134-177`
+- TEE 预映像证明格式要求（每个 `proof` 必须是 32 字节）：`contracts/verifiers/TEEVerifier.sol:18-33`
 
-**验证与查看**
-- 部署产物（代理、Beacon、实现、Verifier 地址）存放：
-  - `deployments/zgTestnet/AgentNFT.json`、`AgentNFTBeacon.json`、`AgentNFTImpl.json`、`TEEVerifier.json`
-- 代理地址（交互入口）：可从 `deployments/zgTestnet/AgentNFT.json` 的 `"address"` 字段读取
-- ChainScan 查看
-  - 代理地址示例：`https://chainscan-galileo.0g.ai/address/0x83d5518f13332E541697Cac7691FFD5ed08fA00e`
-  - Beacon：`https://chainscan-galileo.0g.ai/address/0xb145da830Aa9172C8373491c4544da182F4B59F6`
-  - 实现：`https://chainscan-galileo.0g.ai/address/0xDF2eE03ceE31d96fb91565bd5BDf1Bed725aD1A6`
-  - TEEVerifier：`https://chainscan-galileo.0g.ai/address/0x17f2c88a0020b85c13e9b895aEf4F99b9d114393`
-  - mint 交易示例：`https://chainscan-galileo.0g.ai/tx/0x8b30006d6bc135a30aa5682f28ffe880485a879369192228abefefc88d47d31a`
-- 快速校验脚本（可选）：`pnpm hardhat run scripts/check_owner.ts --network zgTestnet`
+**在链上查看**
+- 部署产物（含地址与交易哈希）位于：
+  - `deployments/zgTestnet/AgentNFT.json`（代理地址）
+  - `deployments/zgTestnet/AgentNFTBeacon.json`
+  - `deployments/zgTestnet/AgentNFTImpl.json`
+  - `deployments/zgTestnet/TEEVerifier.json`
+- 打开浏览器，复制上述地址到 ChainScan（Galileo）：
+  - 代理地址示例：`https://chainscan-galileo.0g.ai/address/<AgentNFT.json里的address>`
+- 交易哈希也可在脚本输出中直接点开，如示例：
+  - `https://chainscan-galileo.0g.ai/tx/0x8b30006d6bc135a30aa5682f28ffe880485a879369192228abefefc88d47d31a`
 
-**自定义你的 iNFT 内容**
-- 在 `scripts/mint.ts` 替换：
-  - `descriptions` 为你的模型/数据描述
-  - `proofs` 为真实的 32 字节校验哈希（或后续接入 ZKP 方案时按 `ZKPVerifier` 的输入格式）
-- `tokenURI` 返回链与索引器地址的 JSON：`contracts/AgentNFT.sol:307-320`
+**常见问题与解决**
+- 私钥格式错误
+  - 必须以 `0x` 开头，总长度 66；否则不会加载（`hardhat.config.ts:13-19, 48-54`）
+- 链 ID 不匹配
+  - 已设置为 `16602`；正常无需改（`hardhat.config.ts:50`）
+- 提示 “No Contract deployed with name: AgentNFT”
+  - 确认先执行了部署命令，再运行 mint
 
-**常见问题**
-- 账户私钥必须是 `0x` 前缀且总长度 66；否则不会被加载：`hardhat.config.ts:13-19, 48-54`
-- 如果出现链 ID 不匹配报错，使用当前配置的 `16602`：`hardhat.config.ts:50`
-- 如果提示 `No Contract deployed with name: AgentNFT`，先运行部署命令
-- 如果调用报 `staticCall` 相关错误，确保通过代理地址 `getContractAt("AgentNFT", <proxyAddress>)` 连接（已在 `scripts/mint.ts` 修正）
+**你需要**
+- 环境文件 `dev.env`
+  
+**完整命令清单（复制即用）**
+- `pnpm install`
+- `pnpm hardhat compile`
+- `pnpm hardhat deploy --network zgTestnet`
+- `pnpm hardhat run scripts/mint.ts --network zgTestnet`
+
+如果你希望把自己的模型或数据描述换成真实内容，只需要打开 `scripts/mint.ts`，把脚本里的 `descriptions` 和 `proofs` 替换成你的描述与对应的 32 字节哈希即可，其余流程不变。
