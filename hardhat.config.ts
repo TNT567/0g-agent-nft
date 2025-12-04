@@ -1,14 +1,25 @@
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 import dotenv from "dotenv";
+import fs from "fs";
 import "hardhat-deploy";
 import "hardhat-deploy-ethers";
 dotenv.config();
+if (fs.existsSync("dev.env")) {
+  dotenv.config({ path: "dev.env" });
+}
 
 const ZG_TESTNET_PRIVATE_KEY = process.env.ZG_TESTNET_PRIVATE_KEY;
 const ZG_AGENT_NFT_CREATOR_PRIVATE_KEY = process.env.ZG_AGENT_NFT_CREATOR_PRIVATE_KEY;
 const ZG_AGENT_NFT_ALICE_PRIVATE_KEY = process.env.ZG_AGENT_NFT_ALICE_PRIVATE_KEY;
 const ZG_AGENT_NFT_BOB_PRIVATE_KEY = process.env.ZG_AGENT_NFT_BOB_PRIVATE_KEY;
+
+const hasPK = (pk?: string) => !!pk && pk.startsWith("0x") && pk.length === 66;
+const hardhatAccounts = [
+  ZG_AGENT_NFT_CREATOR_PRIVATE_KEY,
+  ZG_AGENT_NFT_ALICE_PRIVATE_KEY,
+  ZG_AGENT_NFT_BOB_PRIVATE_KEY,
+].filter(hasPK).map((pk) => ({ privateKey: pk!, balance: "1000000000000000000000" }));
 
 const config: HardhatUserConfig = {
   paths: {
@@ -32,28 +43,15 @@ const config: HardhatUserConfig = {
       allowBlocksWithSameTimestamp: true,
       blockGasLimit: 100000000,
       gas: 100000000,
-      accounts: [
-        {
-          privateKey: ZG_AGENT_NFT_CREATOR_PRIVATE_KEY || "",
-          balance: "1000000000000000000000",
-        },
-        {
-          privateKey: ZG_AGENT_NFT_ALICE_PRIVATE_KEY || "",
-          balance: "1000000000000000000000",
-        },
-        {
-          privateKey: ZG_AGENT_NFT_BOB_PRIVATE_KEY || "",
-          balance: "1000000000000000000000",
-        }
-      ],
+      ...(hardhatAccounts.length > 0 ? { accounts: hardhatAccounts } : {}),
       live: false,
       saveDeployments: true,
       tags: ["test", "local"]
     },
     zgTestnet: {
       url: "https://evmrpc-testnet.0g.ai",
-      accounts: [ZG_TESTNET_PRIVATE_KEY || ""],
-      chainId: 16600,
+      accounts: hasPK(ZG_TESTNET_PRIVATE_KEY) ? [ZG_TESTNET_PRIVATE_KEY!] : [],
+      chainId: 16602,
       live: true,
       saveDeployments: true,
       tags: ["staging"]
